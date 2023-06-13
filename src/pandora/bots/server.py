@@ -10,11 +10,18 @@ from waitress import serve
 from werkzeug.exceptions import default_exceptions
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.serving import WSGIRequestHandler
+from prometheus_flask_exporter import PrometheusMetrics
 
 from .. import __version__
 from ..exts.hooks import hook_logging
 from ..openai.api import API
 
+metrics = PrometheusMetrics.for_app_factory()
+pandora_http_request_total = metrics.counter(
+    'pandora_http_request_total',
+    'Chat request counter',
+    labels={'ip': lambda: request.remote_addr,'path': lambda: request.path,'method': lambda: request.method,'status': lambda r: r.status_code}
+)
 
 class ChatBot:
     __default_ip = '127.0.0.1'
@@ -38,6 +45,7 @@ class ChatBot:
                     template_folder=join(resource_path, 'templates'))
         app.wsgi_app = ProxyFix(app.wsgi_app, x_port=1)
         app.after_request(self.__after_request)
+        metrics.init_app(app)
 
         CORS(app, resources={r'/api/*': {'supports_credentials': True, 'expose_headers': [
             'Content-Type',
@@ -111,6 +119,7 @@ class ChatBot:
     def __get_token_key():
         return request.headers.get('X-Use-Token', request.cookies.get('token-key'))
 
+    @pandora_http_request_total
     def chat(self, conversation_id=None):
         query = {'chatId': [conversation_id]} if conversation_id else {}
 
@@ -128,6 +137,7 @@ class ChatBot:
         return resp
 
     @staticmethod
+    @pandora_http_request_total
     def session():
         ret = {
             'user': {
@@ -145,6 +155,7 @@ class ChatBot:
         return jsonify(ret)
 
     @staticmethod
+    @pandora_http_request_total
     def chat_info():
         ret = {
             'pageProps': {
@@ -171,6 +182,7 @@ class ChatBot:
         return jsonify(ret)
 
     @staticmethod
+    @pandora_http_request_total
     def check():
         ret = {
             'account_plan': {
@@ -194,30 +206,38 @@ class ChatBot:
 
         return jsonify(ret)
 
+    @pandora_http_request_total
     def list_models(self):
         return self.__proxy_result(self.chatgpt.list_models(True, self.__get_token_key()))
 
+    @pandora_http_request_total
     def list_conversations(self):
         offset = request.args.get('offset', '0')
         limit = request.args.get('limit', '20')
 
         return self.__proxy_result(self.chatgpt.list_conversations(offset, limit, True, self.__get_token_key()))
 
+    @pandora_http_request_total
     def get_conversation(self, conversation_id):
         return self.__proxy_result(self.chatgpt.get_conversation(conversation_id, True, self.__get_token_key()))
 
+
+    @pandora_http_request_total
     def del_conversation(self, conversation_id):
         return self.__proxy_result(self.chatgpt.del_conversation(conversation_id, True, self.__get_token_key()))
 
+    @pandora_http_request_total
     def clear_conversations(self):
         return self.__proxy_result(self.chatgpt.clear_conversations(True, self.__get_token_key()))
 
+    @pandora_http_request_total
     def set_conversation_title(self, conversation_id):
         title = request.json['title']
 
         return self.__proxy_result(
             self.chatgpt.set_conversation_title(conversation_id, title, True, self.__get_token_key()))
 
+    @pandora_http_request_total
     def gen_conversation_title(self, conversation_id):
         payload = request.json
         model = payload['model']
@@ -226,6 +246,7 @@ class ChatBot:
         return self.__proxy_result(
             self.chatgpt.gen_conversation_title(conversation_id, model, message_id, True, self.__get_token_key()))
 
+    @pandora_http_request_total
     def talk(self):
         payload = request.json
         prompt = payload['prompt']
@@ -239,6 +260,7 @@ class ChatBot:
             *self.chatgpt.talk(prompt, model, message_id, parent_message_id, conversation_id, stream,
                                self.__get_token_key()), stream)
 
+    @pandora_http_request_total
     def goon(self):
         payload = request.json
         model = payload['model']
@@ -249,6 +271,7 @@ class ChatBot:
         return self.__process_stream(
             *self.chatgpt.goon(model, parent_message_id, conversation_id, stream, self.__get_token_key()), stream)
 
+    @pandora_http_request_total
     def regenerate(self):
         payload = request.json
 

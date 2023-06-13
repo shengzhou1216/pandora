@@ -12,3 +12,5 @@ loguru~=0.6.0
 sentry-sdk~=1.17.0
 pyjwt[crypto]~=2.6.0
 pyperclip~=1.8.2
+prometheus-client~=0.16.0
+prometheus-flask-exporter~=0.22.4
